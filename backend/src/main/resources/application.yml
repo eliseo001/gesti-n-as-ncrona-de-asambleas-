@@ -16,3 +16,9 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+jwt:
+  # Clave HMAC de 512 bits en Base64. En producción definir la variable de entorno JWT_SECRET.
+  secret: ${JWT_SECRET:EBGuzLcgvsyQbXrgMv1g0AmlOdISloczzdrKngrEaMXyIiYGTzmINBUddTK6qh5nDEwQva9axZWEOatwKQQugQ==}
+  # Validez del token en milisegundos (24 h)
+  expiration-ms: 86400000
