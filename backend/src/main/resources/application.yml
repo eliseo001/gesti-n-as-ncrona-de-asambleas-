@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: consorcio-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/consorcio_db
+    username: postgres
+    password: admin
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
