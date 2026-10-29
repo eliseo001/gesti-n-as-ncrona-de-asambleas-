@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Quórum en Vivo - Tesis</title>
+    <!-- Librerías para conectar a Spring Boot WebSockets -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+
+<body style="font-family: Arial; padding: 20px;">
+    <h2>📊 Quórum en Vivo - Asamblea Activa</h2>
+    <div id="votos" style="padding: 15px; border: 2px solid #2c3e50; background-color: #ecf0f1; border-radius: 8px;">
+        <i>Esperando que los propietarios emitan su voto...</i>
+        <hr>
+    </div>
+
+    <script>
+        // 1. Conectar al endpoint expuesto por tu WebSocketConfig
+        var socket = new SockJS('http://localhost:8080/ws-consorcio');
+        var stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function (frame) {
+            console.log('Conectado al servidor STOMP: ' + frame);
+
+            // 2. Suscribirse al canal exacto de la asamblea 1 (donde el VotoService hace el broadcast)
+            stompClient.subscribe('/topic/asamblea/1', function (mensaje) {
+                var eventoVoto = JSON.parse(mensaje.body);
+
+                // 3. Dibujar el voto en la pantalla apenas llega
+                var html = "<p>✅ <b>Moción:</b> " + eventoVoto.valorVoto +
+                    " | <b>Peso (Coeficiente):</b> " + eventoVoto.pesoCoeficiente +
+                    "<br><span style='font-size: 0.8em; color: gray;'>🔒 Hash: " + eventoVoto.hashActual + "</span></p><hr>";
+
+                document.getElementById('votos').innerHTML += html;
+            });
+        });
+    </script>
+</body>
+
+</html>
