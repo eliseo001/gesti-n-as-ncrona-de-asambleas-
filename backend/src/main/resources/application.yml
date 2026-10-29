@@ -9,6 +9,7 @@ spring:
     driver-class-name: org.postgresql.Driver
 
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: update
     show-sql: true
@@ -16,6 +17,10 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+  sql:
+    init:
+      mode: always
 
 jwt:
   # Clave HMAC de 512 bits en Base64. En producción definir la variable de entorno JWT_SECRET.

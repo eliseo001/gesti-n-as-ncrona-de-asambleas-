@@ -34,6 +34,7 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/ws-consorcio/**").permitAll()
                         // /error público para que los errores reales (400, 404, 500) no se enmascaren como 401
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
