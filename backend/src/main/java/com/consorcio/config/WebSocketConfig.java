@@ -27,12 +27,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Endpoint nativo para clientes con soporte pleno de WebSockets
-        registry.addEndpoint("/ws-consorcio")
+        // Endpoints nativos para clientes con soporte pleno de WebSockets (ej: @stomp/stompjs con brokerURL)
+        registry.addEndpoint("/ws-consorcio", "/websocket")
                 .setAllowedOriginPatterns("*");
 
-        // Endpoint con fallback SockJS para máxima compatibilidad con navegadores y clientes web
-        registry.addEndpoint("/ws-consorcio")
+        // Endpoints con fallback SockJS para máxima compatibilidad con navegadores y clientes web
+        registry.addEndpoint("/ws-consorcio", "/websocket")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }

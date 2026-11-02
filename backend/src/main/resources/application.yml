@@ -20,7 +20,7 @@ spring:
 
   sql:
     init:
-      mode: always
+      mode: never
 
 jwt:
   # Clave HMAC de 512 bits en Base64. En producción definir la variable de entorno JWT_SECRET.

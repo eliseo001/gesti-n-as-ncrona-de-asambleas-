@@ -19,9 +19,9 @@ INSERT INTO unidades_funcionales (id_consorcio, id_usuario, numero_depto, coefic
 VALUES (1, 1, '1A', 0.050000);
 
 -- 4. Asamblea vinculada al consorcio (id=1) en estado ABIERTA y dentro de la ventana temporal
--- Se utilizan funciones de PostgreSQL (NOW()) para fijar la ventana entre ayer y mañana
+-- Se fijan 30 días de vigencia para facilitar pruebas continuas de asamblea activa
 INSERT INTO asambleas (id_consorcio, ventana_inicio, ventana_fin, estado)
-VALUES (1, NOW() - INTERVAL '1 day', NOW() + INTERVAL '1 day', 'ABIERTA');
+VALUES (1, NOW() - INTERVAL '1 day', NOW() + INTERVAL '30 days', 'ABIERTA');
 
 -- 5. Tema del orden del día asociado a la asamblea (id=1)
 INSERT INTO temas (id_asamblea, titulo, descripcion)
