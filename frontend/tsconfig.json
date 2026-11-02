@@ -30,7 +30,8 @@
     "**/*.mts",
     "**/*.ts",
     "**/*.tsx",
-    "src/app/asamblea/page.js"
+    "src/app/asamblea/page.js",
+    "src/app/admin/AdminDashboard/page,.js"
   ],
   "exclude": [
     "node_modules"

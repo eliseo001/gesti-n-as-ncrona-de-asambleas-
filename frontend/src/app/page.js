@@ -94,6 +94,16 @@ export default function LoginPage() {
           >
             {loading ? 'Verificando...' : 'Iniciar Sesión'}
           </button>
+
+          <div className="text-center pt-2">
+            <button
+              type="button"
+              onClick={() => router.push('/recuperar')}
+              className="text-xs font-semibold text-blue-600 hover:underline"
+            >
+              ¿Olvidaste tu contraseña? Recuperar acceso electoral
+            </button>
+          </div>
         </form>
       </div>
     </main>
