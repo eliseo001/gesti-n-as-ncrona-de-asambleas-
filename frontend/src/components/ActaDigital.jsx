@@ -43,6 +43,26 @@ export default function ActaDigital({ esPropietarioDesignado = true }) {
                 </p>
             </div>
 
+            {/* INSERTA ESTO JUSTO DEBAJO DEL HEADER OSCURO DEL ACTA */}
+
+            {/* Simulador de Brecha 6: Resolución Condicionada (Silencio de Ausentes) */}
+            <div className="mx-8 mt-6 bg-amber-50 border border-amber-300 p-4 rounded-lg flex items-start gap-3">
+                <span className="text-xl">⚠️</span>
+                <div>
+                    <h4 className="font-bold text-amber-900 text-sm">Resolución condicionada al vencimiento del plazo de oposición (Art. 2060 CCyCN)</h4>
+                    <p className="text-xs text-amber-800 mt-1">Al no haberse alcanzado la mayoría absoluta en el recinto, las decisiones revisten carácter de propuesta y quedarán firmes en 15 días si no existe oposición legal de los ausentes.</p>
+                </div>
+            </div>
+
+            {/* Simulador de Brecha 9: Bloqueo Cruzado / Empate de Propiedad Horizontal */}
+            <div className="mx-8 mt-4 bg-red-50 border border-red-300 p-4 rounded-lg flex items-start gap-3">
+                <span className="text-xl">🛑</span>
+                <div>
+                    <h4 className="font-bold text-red-900 text-sm">RECHAZADO POR BLOQUEO CRUZADO</h4>
+                    <p className="text-xs text-red-800 mt-1">El Tema 2 cuenta con mayoría de unidades funcionales a favor, pero mayoría de coeficiente en contra. Al no configurarse la doble mayoría absoluta (Art. 2060), la moción se considera rechazada.</p>
+                </div>
+            </div>
+
             <div className="p-8 space-y-8 text-slate-800">
 
                 {/* Datos de Apertura y Quórum con Doble Cómputo */}
@@ -270,11 +290,10 @@ export default function ActaDigital({ esPropietarioDesignado = true }) {
                             <button
                                 onClick={() => setFirmado(true)}
                                 disabled={firmado}
-                                className={`px-6 py-3 rounded-lg font-bold transition-all shadow text-xs whitespace-nowrap ${
-                                    firmado
-                                        ? 'bg-emerald-100 text-emerald-800 cursor-not-allowed border border-emerald-300'
-                                        : 'bg-blue-700 text-white hover:bg-blue-800 cursor-pointer'
-                                }`}
+                                className={`px-6 py-3 rounded-lg font-bold transition-all shadow text-xs whitespace-nowrap ${firmado
+                                    ? 'bg-emerald-100 text-emerald-800 cursor-not-allowed border border-emerald-300'
+                                    : 'bg-blue-700 text-white hover:bg-blue-800 cursor-pointer'
+                                    }`}
                             >
                                 {firmado ? '✓ Acta Rubricada Digitalmente (2/2 Firmas)' : '✍️ Firmar Acta como Propietario Designado'}
                             </button>

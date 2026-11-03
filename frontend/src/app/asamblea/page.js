@@ -1,15 +1,15 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../../context/AuthContext';
 
 export default function LobbyAsamblea() {
     const router = useRouter();
+    const { usuario, faseAsamblea } = useAuth();
 
-    // Simulador de estado de la asamblea (Abierta / Cerrada) para defensa de tesis
-    const [asambleaCerrada, setAsambleaCerrada] = useState(false);
+    const asambleaCerrada = faseAsamblea === 'CERRADA';
 
-    // Datos mockeados de la Doble Mayoría (Art. 2060 CCyCN: Mayoría de Unidades + Mayoría de Coeficiente)
-    // En producción se actualiza vía WebSocket STOMP suscripto a /topic/asamblea/1
+    // Datos de la Doble Mayoría (Art. 2060 CCyCN: Mayoría de Unidades + Mayoría de Coeficiente)
     const [metricasQuorum] = useState({
         coeficienteAlcanzado: 68.5,
         unidadesPresentes: 14,
@@ -22,9 +22,6 @@ export default function LobbyAsamblea() {
             codigo: 'Tema 0 (Preliminar)',
             titulo: 'Designación de 1 Presidente de Asamblea y 2 Propietarios para firmar el Acta',
             normativa: 'Art. 2062 CCyCN',
-            coeficienteAFavor: 68.5,
-            unidadesAFavor: 14,
-            unidadesTotales: 20,
             resumenEstado: 'Postulación activa (Presidente: UF 1A | Firmantes: UF 2B y UF 4B)',
         },
         {
@@ -32,10 +29,7 @@ export default function LobbyAsamblea() {
             codigo: 'Tema 1',
             titulo: 'Aprobación de presupuesto para pintura e impermeabilización de fachada',
             normativa: 'Art. 2060 CCyCN (Doble Mayoría)',
-            coeficienteAFavor: 68.5,
-            unidadesAFavor: 14,
-            unidadesTotales: 20,
-            resumenEstado: 'Aprobado provisoriamente por 68.5% del coeficiente, representando a 14 de 20 unidades',
+            resumenEstado: 'En tratamiento (68.5% del coeficiente, representando a 14 de 20 unidades)',
         },
     ]);
 
@@ -43,7 +37,7 @@ export default function LobbyAsamblea() {
         <div className="min-h-screen bg-slate-100 p-6 font-sans">
             <div className="max-w-5xl mx-auto space-y-6">
 
-                {/* Cabecera Institucional con Controles de Demostración */}
+                {/* Cabecera Institucional del Propietario (Sin botones ni toggles de administrador) */}
                 <div className="bg-slate-900 text-white p-6 rounded-xl shadow-lg border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
                         <span className="text-xs font-bold uppercase tracking-widest text-blue-400">
@@ -51,28 +45,30 @@ export default function LobbyAsamblea() {
                         </span>
                         <h1 className="text-2xl font-bold mt-1">Asamblea Extraordinaria - Noviembre 2026</h1>
                         <p className="text-slate-300 text-sm mt-0.5">
-                            Consorcio Edificio Las Margaritas • Propietario Acreditado (UF 4B - Coef. 4.15%)
+                            Consorcio Edificio Las Margaritas • Titular:{' '}
+                            <strong>{usuario?.nombre || 'Propietario'}</strong> ({usuario?.unidad || 'UF 4B'} — Coef.{' '}
+                            {usuario?.coeficiente || 5.2}%)
                         </p>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
                         <button
-                            onClick={() => router.push('/asamblea/onboarding')}
-                            className="bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-600 transition-colors cursor-pointer"
+                            onClick={() => router.push('/asamblea/propuestas')}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-700 transition-colors cursor-pointer"
                         >
-                            🛡️ Ver Onboarding / KYC
+                            💡 Iniciativas Vecinales
+                        </button>
+                        <button
+                            onClick={() => router.push('/asamblea/onboarding')}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-700 transition-colors cursor-pointer"
+                        >
+                            🛡️ Mi Acreditación KYC
                         </button>
                         <button
                             onClick={() => router.push('/asamblea/historial')}
-                            className="bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-600 transition-colors cursor-pointer"
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-700 transition-colors cursor-pointer"
                         >
                             📚 Historial de Actas
-                        </button>
-                        <button
-                            onClick={() => setAsambleaCerrada(!asambleaCerrada)}
-                            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 px-4 rounded-lg shadow text-xs transition-colors cursor-pointer"
-                        >
-                            {asambleaCerrada ? '🔓 Reabrir Asamblea' : '⏱️ Simular Cierre por Tiempo'}
                         </button>
                     </div>
                 </div>
@@ -94,7 +90,6 @@ export default function LobbyAsamblea() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Métrica 1: Coeficiente de Copropiedad */}
                         <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                             <div className="flex justify-between text-xs font-bold text-slate-700 mb-1.5">
                                 <span>1. Mayoría por Coeficiente Fiscal</span>
@@ -111,7 +106,6 @@ export default function LobbyAsamblea() {
                             </p>
                         </div>
 
-                        {/* Métrica 2: Cantidad de Unidades Funcionales */}
                         <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                             <div className="flex justify-between text-xs font-bold text-slate-700 mb-1.5">
                                 <span>2. Mayoría por Unidades Funcionales (Nominal)</span>
@@ -134,14 +128,21 @@ export default function LobbyAsamblea() {
                     </div>
                 </div>
 
-                {/* Renderizado Condicional según estado de la Asamblea */}
+                {/* Renderizado Condicional según estado global de la Asamblea */}
                 {!asambleaCerrada ? (
-                    /* --- VISTA 1: ASAMBLEA ABIERTA (Orden del Día y Cómputo Parcial) --- */
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                         <div className="flex justify-between items-center mb-6 border-b border-slate-200 pb-4">
                             <h2 className="font-bold text-slate-800 text-lg">Puntos del Orden del Día</h2>
-                            <span className="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full text-xs border border-emerald-300">
-                                🟢 Ventana de Sufragio Abierta
+                            <span
+                                className={`font-bold px-3 py-1 rounded-full text-xs border ${
+                                    faseAsamblea === 'CUARTO_INTERMEDIO'
+                                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                        : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                }`}
+                            >
+                                {faseAsamblea === 'CUARTO_INTERMEDIO'
+                                    ? '⏸️ En Cuarto Intermedio'
+                                    : '🟢 Asamblea Abierta (Debate y Voto Simultáneos)'}
                             </span>
                         </div>
 
@@ -162,13 +163,13 @@ export default function LobbyAsamblea() {
                                         </div>
                                         <h3 className="font-bold text-slate-900 text-base">{tema.titulo}</h3>
                                         <p className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-md inline-block">
-                                            📊 Cómputo actual: {tema.resumenEstado}
+                                            📊 Estado: {tema.resumenEstado}
                                         </p>
                                     </div>
 
                                     <button
                                         onClick={() => router.push(`/asamblea/tema/${tema.id}`)}
-                                        className="bg-blue-700 hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg font-bold text-xs shadow transition-colors whitespace-nowrap"
+                                        className="bg-blue-700 hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg font-bold text-xs shadow transition-colors whitespace-nowrap cursor-pointer"
                                     >
                                         {tema.id === 0 ? 'Elegir Autoridades →' : 'Ingresar a Debatir y Votar →'}
                                     </button>
@@ -177,7 +178,6 @@ export default function LobbyAsamblea() {
                         </div>
                     </div>
                 ) : (
-                    /* --- VISTA 2: ASAMBLEA CERRADA (Consolidación y Acceso al Acta) --- */
                     <div className="bg-white p-8 rounded-xl shadow-lg border-2 border-slate-300 text-center space-y-6">
                         <div className="text-5xl">⚖️</div>
                         <h2 className="text-2xl font-bold text-slate-800">Ventana de Votación Concluida</h2>
@@ -191,7 +191,7 @@ export default function LobbyAsamblea() {
 
                         <button
                             onClick={() => router.push('/asamblea/acta')}
-                            className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold py-3.5 px-8 rounded-xl shadow-md transition-all"
+                            className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold py-3.5 px-8 rounded-xl shadow-md transition-all cursor-pointer"
                         >
                             📄 Visualizar y Firmar Acta Digital Oficial
                         </button>

@@ -1,6 +1,9 @@
 package com.consorcio.services;
 
 import com.consorcio.dtos.VotoEmitidoEvent;
+import com.consorcio.exceptions.AsambleaNoAbiertaException;
+import com.consorcio.exceptions.SinUnidadesFuncionalesException;
+import com.consorcio.exceptions.VotoYaEmitidoException;
 import com.consorcio.models.Asamblea;
 import com.consorcio.models.Consorcio;
 import com.consorcio.models.Tema;
@@ -16,17 +19,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
 
 /**
- * Servicio encargado de la orquestación y registro seguro del voto.
- * Implementa una cadena de bloques criptográfica liviana (blockchain ledger) a nivel de cada tema
- * y publica actualizaciones en tiempo real a través de WebSockets (STOMP).
+ * Servicio Core del Motor de Sufragio Criptográfico (Hash Chaining).
+ *
+ * <p>Orquesta la validación legal (Ley N° 26.994 - CCyCN), la consolidación financiera
+ * Multi-Unidad mediante {@link BigDecimal}, el control de concurrencia pesimista en PostgreSQL
+ * para evitar bifurcaciones de la cadena SHA-256 y la difusión en tiempo real vía WebSockets (STOMP).</p>
  */
 @Service
 public class VotoService {
-
-    private static final String HASH_GENESIS_INICIAL = "GENESIS_HASH";
 
     private final TemaRepository temaRepository;
     private final UsuarioRepository usuarioRepository;
@@ -50,120 +56,197 @@ public class VotoService {
     }
 
     /**
-     * Registra un nuevo voto de forma transaccional, enlazándolo criptográficamente con el historial
-     * y emitiendo un evento en tiempo real para la actualización dinámica del quórum.
+     * Sobrecarga con identificadores {@link Long} para cumplir con el contrato del dominio.
+     *
+     * @param idUsuario Identificador del copropietario votante.
+     * @param idTema    Identificador del punto del Orden del Día.
+     * @param valorVoto Postura adoptada ("A_FAVOR", "EN_CONTRA", "ABSTENCION").
+     * @return Entidad {@link Voto} persistida y sellada criptográficamente.
+     */
+    @Transactional
+    public Voto registrarVoto(Long idUsuario, Long idTema, String valorVoto) {
+        if (idUsuario == null || idTema == null) {
+            throw new IllegalArgumentException("Los identificadores de usuario y tema son obligatorios");
+        }
+        return registrarVoto(idUsuario.intValue(), idTema.intValue(), valorVoto);
+    }
+
+    /**
+     * Registra un sufragio de forma atómica, serializando el encadenamiento criptográfico SHA-256
+     * mediante bloqueo pesimista ({@code PESSIMISTIC_WRITE}) y consolidando los coeficientes de todas
+     * las unidades funcionales del propietario.
+     *
+     * <p><b>Explicación para Defensa de Tesis (Prevención de Condición de Carrera / Fork):</b>
+     * En una arquitectura concurrente, si dos vecinos votan en el mismo milisegundo sobre el mismo tema
+     * bajo el aislamiento estándar {@code READ COMMITTED}, ambos hilos podrían leer el mismo {@code hashAnterior}
+     * antes de que el otro confirme su transacción, generando una bifurcación (dos bloques hijos apuntando
+     * al mismo bloque padre). Al invocar {@link VotoRepository#findTopByTemaIdOrderByFechaEmisionDesc(Integer)}
+     * anotado con {@code @Lock(LockModeType.PESSIMISTIC_WRITE)}, PostgreSQL ejecuta un {@code SELECT ... FOR UPDATE}
+     * sobre la cabeza de la cadena, obligando al segundo hilo a esperar el {@code COMMIT} del primero y
+     * garantizando una topología estrictamente lineal e inmutable.</p>
      *
      * @param idUsuario Identificador del copropietario que emite el voto.
-     * @param idTema    Identificador de la moción o punto del orden del día a votar.
-     * @param valorVoto Sentido de la votación (ej: "A_FAVOR", "EN_CONTRA", "ABSTENCION").
-     * @return Entidad Voto persistida con su sello criptográfico asignado.
+     * @param idTema    Identificador del tema o moción en tratamiento.
+     * @param valorVoto Sentido del sufragio ("A_FAVOR", "EN_CONTRA", "ABSTENCION").
+     * @return Entidad {@link Voto} persistida con su sello criptográfico SHA-256.
      */
     @Transactional
     public Voto registrarVoto(Integer idUsuario, Integer idTema, String valorVoto) {
-        // 1. Buscar el Tema en debate
-        Tema temaConsultado = temaRepository.findById(idTema)
+        // a. Buscar el Tema y validar que la Asamblea asociada esté en estado ABIERTA y en horario
+        Tema temaEnDebate = temaRepository.findById(idTema)
                 .orElseThrow(() -> new IllegalArgumentException("No se encontró el tema con ID: " + idTema));
 
-        // 2. Validar que la Asamblea asociada esté abierta y vigente temporalmente
-        validarQueAsambleaEsteAbierta(temaConsultado.getAsamblea());
+        validarQueAsambleaEsteAbierta(temaEnDebate.getAsamblea());
 
-        // 3. Validar que el Usuario no haya votado previamente en este Tema
+        // b. Validar que el propietario no haya emitido un voto previo en este Tema
         validarQueUsuarioNoHayaVotado(idUsuario, idTema);
 
-        // Buscar la entidad del Usuario votante
         Usuario usuarioVotante = usuarioRepository.findById(idUsuario)
                 .orElseThrow(() -> new IllegalArgumentException("No se encontró el usuario con ID: " + idUsuario));
 
-        // 4. Obtener el coeficiente de copropiedad legal de la Unidad Funcional del usuario en este consorcio
-        Consorcio consorcioDeLaAsamblea = temaConsultado.getAsamblea().getConsorcio();
-        BigDecimal coeficienteDeCopropiedad = obtenerCoeficienteDeCopropiedad(consorcioDeLaAsamblea, idUsuario);
+        // c. Obtener todas las unidades del propietario (Multi-Unidad) y sumar sus coeficientes con BigDecimal
+        Consorcio consorcioDeLaAsamblea = temaEnDebate.getAsamblea().getConsorcio();
+        BigDecimal coeficienteTotalConsolidado = calcularCoeficienteTotalMultiUnidad(consorcioDeLaAsamblea, idUsuario);
 
-        // 5. Buscar el último voto del Tema para obtener el hash anterior (o GENESIS_HASH)
-        // Justificación: Cada nuevo voto depende del hash previo. Modificar un voto antiguo rompe la cadena.
+        // d. Leer el último hash de la cadena del tema aplicando BLOQUEO PESIMISTA (SELECT ... FOR UPDATE).
+        // Si no existen votos previos para este tema, se calcula un Hash Génesis Dinámico único para el tema.
         String hashDelVotoAnterior = votoRepository
-                .findTopByTema_IdTemaOrderByIdVotoDesc(idTema)
+                .findTopByTemaIdOrderByFechaEmisionDesc(idTema)
                 .map(Voto::getHashActual)
-                .orElse(HASH_GENESIS_INICIAL);
+                .orElseGet(() -> generarHashGenesisDinamico(temaEnDebate));
 
-        // 6. Generar el hash criptográfico del voto actual
-        LocalDateTime momentoDeEmision = LocalDateTime.now();
+        // e. Generar el nuevo hash SHA-256 sellando todos los atributos críticos en UTC
+        Instant instanteUtcActual = Instant.now();
+        LocalDateTime fechaEmisionUtc = LocalDateTime.ofInstant(instanteUtcActual, ZoneOffset.UTC);
 
-        // Justificación: Se sella la identidad del votante, la moción votada, el sentido del voto,
-        // el orden temporal estricto y la continuidad de la cadena.
-        String datosParaElHash = hashDelVotoAnterior + idUsuario + idTema + valorVoto + momentoDeEmision;
-        String hashDelVotoActual = hashService.generarHashSha256(datosParaElHash);
+        String cadenaCanonicaParaHash = construirCadenaCanonicaDelBloque(
+                hashDelVotoAnterior,
+                idUsuario,
+                coeficienteTotalConsolidado,
+                valorVoto,
+                instanteUtcActual
+        );
+        String hashDelVotoActual = hashService.generarHashSha256(cadenaCanonicaParaHash);
 
-        // 7. Construir y guardar el nuevo Voto sellado
+        // f. Construir y persistir el nuevo eslabón criptográfico
         Voto nuevoVoto = Voto.builder()
-                .tema(temaConsultado)
+                .tema(temaEnDebate)
                 .usuario(usuarioVotante)
                 .valor(valorVoto)
-                .pesoCoeficiente(coeficienteDeCopropiedad)
-                .timestampEmision(momentoDeEmision)
+                .pesoCoeficiente(coeficienteTotalConsolidado)
+                .timestampEmision(fechaEmisionUtc)
                 .hashAnterior(hashDelVotoAnterior)
                 .hashActual(hashDelVotoActual)
                 .build();
 
-        Voto votoGuardado = votoRepository.save(nuevoVoto);
+        Voto votoPersistido = votoRepository.save(nuevoVoto);
 
-        // 8. Publicación en tiempo real (Broadcast) mediante WebSockets / STOMP
-        // Desacopla la vista: Notifica a todos los clientes suscritos al quórum de la asamblea
-        // sin exponer entidades internas ni bloquear el hilo de ejecución principal.
-        Integer idAsamblea = temaConsultado.getAsamblea().getIdAsamblea();
-        VotoEmitidoEvent eventoVotoEmitido = VotoEmitidoEvent.fromEntity(votoGuardado);
+        // Difusión en tiempo real del nuevo estado de la urna vía WebSocket STOMP
+        Integer idAsamblea = temaEnDebate.getAsamblea().getIdAsamblea();
+        VotoEmitidoEvent eventoVotoEmitido = VotoEmitidoEvent.fromEntity(votoPersistido);
         messagingTemplate.convertAndSend("/topic/asamblea/" + idAsamblea, eventoVotoEmitido);
 
-        return votoGuardado;
+        return votoPersistido;
     }
 
     // =========================================================================
-    // Métodos privados de validación y soporte (Clean Code / Single Responsibility)
+    // Métodos privados de validación de dominio y criptografía (Clean Code)
     // =========================================================================
 
     /**
      * Valida que la asamblea exista, se encuentre formalmente en estado "ABIERTA" y dentro de la ventana horaria.
+     *
+     * @throws AsambleaNoAbiertaException Si la asamblea está cerrada, suspendida o fuera de término.
      */
     private void validarQueAsambleaEsteAbierta(Asamblea asamblea) {
         if (asamblea == null) {
-            throw new IllegalStateException("El tema consultado no posee una asamblea asociada");
+            throw new AsambleaNoAbiertaException("El tema consultado no posee una asamblea asociada");
         }
 
         if (!"ABIERTA".equalsIgnoreCase(asamblea.getEstado())) {
-            throw new IllegalStateException("La asamblea no se encuentra abierta para votación (estado actual: " + asamblea.getEstado() + ")");
+            throw new AsambleaNoAbiertaException(
+                    "La asamblea no se encuentra abierta para votación (estado actual: " + asamblea.getEstado() + ")");
         }
 
         LocalDateTime momentoActual = LocalDateTime.now();
-        boolean votoEmitidoAntesDelInicio = momentoActual.isBefore(asamblea.getVentanaInicio());
-        boolean votoEmitidoDespuesDelCierre = momentoActual.isAfter(asamblea.getVentanaFin());
+        boolean antesDeApertura = asamblea.getVentanaInicio() != null && momentoActual.isBefore(asamblea.getVentanaInicio());
+        boolean despuesDeCierre = asamblea.getVentanaFin() != null && momentoActual.isAfter(asamblea.getVentanaFin());
 
-        if (votoEmitidoAntesDelInicio || votoEmitidoDespuesDelCierre) {
-            throw new IllegalStateException("La votación no está permitida fuera de la ventana horaria habilitada para la asamblea");
+        if (antesDeApertura || despuesDeCierre) {
+            throw new AsambleaNoAbiertaException(
+                    "La votación no está permitida fuera de la ventana horaria habilitada para la asamblea");
         }
     }
 
     /**
-     * Valida que el copropietario no posea un voto previo emitido para el tema consultado.
+     * Verifica que el copropietario no registre un sufragio previo en el mismo punto del Orden del Día.
+     *
+     * @throws VotoYaEmitidoException Si el usuario ya votó en este tema.
      */
     private void validarQueUsuarioNoHayaVotado(Integer idUsuario, Integer idTema) {
-        boolean elUsuarioYaEmitioVoto = votoRepository.existsByTema_IdTemaAndUsuario_IdUsuario(idTema, idUsuario);
-        if (elUsuarioYaEmitioVoto) {
-            throw new IllegalStateException("El usuario ya ha emitido su voto para este tema en la asamblea");
+        boolean yaEmitioVoto = votoRepository.existsByTema_IdTemaAndUsuario_IdUsuario(idTema, idUsuario);
+        if (yaEmitioVoto) {
+            throw new VotoYaEmitidoException("El usuario ya ha emitido su voto para este tema en la asamblea");
         }
     }
 
     /**
-     * Busca la unidad funcional del usuario dentro del consorcio para obtener su coeficiente legal de copropiedad.
+     * Recupera todas las unidades asociadas al propietario en el consorcio (ej. Depto 4B + Cochera 12)
+     * y suma sus coeficientes utilizando aritmética exacta de punto fijo ({@link BigDecimal}).
+     *
+     * <p><b>Justificación de Clean Code:</b> Se prohíbe el uso de {@code double} o {@code float}
+     * conforme al estándar IEEE 754 para evitar errores de redondeo binario en el cómputo legal
+     * del Art. 2060 del Código Civil y Comercial de la Nación.</p>
+     *
+     * @throws SinUnidadesFuncionalesException Si el usuario no posee ninguna unidad en el consorcio.
      */
-    private BigDecimal obtenerCoeficienteDeCopropiedad(Consorcio consorcio, Integer idUsuario) {
+    private BigDecimal calcularCoeficienteTotalMultiUnidad(Consorcio consorcio, Integer idUsuario) {
         if (consorcio == null || consorcio.getIdConsorcio() == null) {
-            throw new IllegalStateException("La asamblea no tiene un consorcio válido asociado");
+            throw new SinUnidadesFuncionalesException("La asamblea no tiene un consorcio válido asociado");
         }
 
-        UnidadFuncional unidadFuncionalDelUsuario = unidadFuncionalRepository
-                .findByConsorcio_IdConsorcioAndUsuario_IdUsuario(consorcio.getIdConsorcio(), idUsuario)
-                .orElseThrow(() -> new IllegalStateException(
-                        "El usuario no posee una unidad funcional registrada en el consorcio correspondiente a esta asamblea"));
+        List<UnidadFuncional> unidadesDelPropietario = unidadFuncionalRepository
+                .findAllByConsorcio_IdConsorcioAndUsuario_IdUsuario(consorcio.getIdConsorcio(), idUsuario);
 
-        return unidadFuncionalDelUsuario.getCoeficienteCopropiedad();
+        if (unidadesDelPropietario == null || unidadesDelPropietario.isEmpty()) {
+            throw new SinUnidadesFuncionalesException(
+                    "El usuario no posee una unidad funcional registrada en el consorcio correspondiente a esta asamblea");
+        }
+
+        return unidadesDelPropietario.stream()
+                .map(UnidadFuncional::getCoeficienteCopropiedad)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Genera un Hash Génesis Dinámico determinista y único para cada Tema de Asamblea.
+     *
+     * <p><b>Fundamento Criptográfico (Defensa de Tesis):</b> Reemplazar una constante estática
+     * por una semilla derivada del ID del Tema y de su Asamblea impide ataques de repetición
+     * (Replay Attack), donde un administrador de base de datos malicioso intente trasplantar
+     * cadenas de bloques válidas de un tema antiguo hacia un tema nuevo.</p>
+     */
+    private String generarHashGenesisDinamico(Tema tema) {
+        Integer idAsamblea = tema.getAsamblea() != null ? tema.getAsamblea().getIdAsamblea() : 0;
+        String semillaGenesis = "GENESIS_BLOCK|ASAMBLEA:" + idAsamblea + "|TEMA:" + tema.getIdTema();
+        return hashService.generarHashSha256(semillaGenesis);
+    }
+
+    /**
+     * Construye la representación canónica con delimitadores explícitos ("|") para alimentar
+     * el algoritmo SHA-256, incluyendo el coeficiente consolidado para impedir adulteraciones
+     * del peso electoral en la base de datos.
+     */
+    private String construirCadenaCanonicaDelBloque(
+            String hashAnterior,
+            Integer idUsuario,
+            BigDecimal coeficienteTotal,
+            String valorVoto,
+            Instant timestampUtc) {
+        return hashAnterior
+                + "|" + idUsuario
+                + "|" + coeficienteTotal.toPlainString()
+                + "|" + valorVoto
+                + "|" + timestampUtc.toString();
     }
 }
