@@ -1,53 +1,115 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { Card, CardHeader, Button, Badge, Input } from './ui';
 
-const MENSAJES_INICIALES = [
-    {
-        id: 1,
-        autor: 'Juan Pérez (UF 1A)',
-        rol: 'PROPIETARIO',
-        texto: 'Me parece elevado el presupuesto inicial de $500.000, deberíamos revisar las garantías.',
-        tiempo: '10:05',
-    },
-    {
-        id: 2,
-        autor: 'María Gómez (UF 2B)',
-        rol: 'PROPIETARIO',
-        texto: 'Incluye impermeabilización integral con membrana geotextil; a largo plazo evita filtraciones.',
-        tiempo: '10:08',
-    },
-    {
-        id: 3,
-        autor: 'Administración Central',
-        rol: 'ADMINISTRADOR',
-        texto: 'Estimados copropietarios, el contratista matriculado confirmó una bonificación cerrando el monto final en $450.000.',
-        tiempo: '10:15',
-    },
-];
+const MENSAJES_POR_TEMA_INICIALES = {
+    0: [
+        {
+            id: 10,
+            autor: 'Administración Central',
+            rol: 'ADMINISTRADOR',
+            texto: 'Se abre el registro de postulaciones para Presidente de Asamblea y 2 propietarios firmantes del Acta (Art. 2062 CCyCN).',
+            tiempo: '09:50',
+        },
+        {
+            id: 11,
+            autor: 'Juan Pérez (UF 1A)',
+            rol: 'PROPIETARIO',
+            texto: 'Me postulo como Presidente de Asamblea para dar fe del escrutinio digital.',
+            tiempo: '09:55',
+        },
+    ],
+    1: [
+        {
+            id: 101,
+            autor: 'Juan Pérez (UF 1A)',
+            rol: 'PROPIETARIO',
+            texto: 'Me parece elevado el presupuesto inicial de $500.000 para pintura e impermeabilización, deberíamos revisar las garantías.',
+            tiempo: '10:05',
+        },
+        {
+            id: 102,
+            autor: 'María Gómez (UF 2B)',
+            rol: 'PROPIETARIO',
+            texto: 'Incluye impermeabilización integral con membrana geotextil de 10 años de garantía; a largo plazo evita filtraciones estructurales.',
+            tiempo: '10:08',
+        },
+        {
+            id: 103,
+            autor: 'Administración Central',
+            rol: 'ADMINISTRADOR',
+            texto: 'Estimados copropietarios, el contratista matriculado confirmó una bonificación cerrando el monto final en $450.000 en 3 cuotas sin interés.',
+            tiempo: '10:15',
+        },
+    ],
+    2: [
+        {
+            id: 201,
+            autor: 'Carlos Ruiz (UF 5C)',
+            rol: 'PROPIETARIO',
+            texto: 'Solicito evaluar la continuidad de la administración por demoras en las rendiciones trimestrales.',
+            tiempo: '10:22',
+        },
+        {
+            id: 202,
+            autor: 'Administración Central',
+            rol: 'ADMINISTRADOR',
+            texto: 'Los comprobantes auditados ya fueron subidos al repositorio documental con firma contable certificada.',
+            tiempo: '10:27',
+        },
+        {
+            id: 203,
+            autor: 'María Gómez (UF 2B)',
+            rol: 'PROPIETARIO',
+            texto: 'Habiendo verificado los balances, considero inconveniente cambiar de administración en plena obra de fachada.',
+            tiempo: '10:34',
+        },
+    ],
+    3: [
+        {
+            id: 301,
+            autor: 'Lucía Fernández (UF 3A)',
+            rol: 'PROPIETARIO',
+            texto: 'Propongo extender el horario de reserva del SUM los viernes y sábados hasta las 02:00 hs con depósito de garantía.',
+            tiempo: '11:02',
+        },
+        {
+            id: 302,
+            autor: 'Juan Pérez (UF 1A)',
+            rol: 'PROPIETARIO',
+            texto: 'Recuerden que por Art. 2057 del CCyCN toda modificación reglamentaria exige mayoría de dos tercios (66.6%).',
+            tiempo: '11:10',
+        },
+    ],
+};
 
-export default function ForoDebate({ faseActual = 'ABIERTA' }) {
+export default function ForoDebate({
+    faseActual = 'ABIERTA',
+    temaActual = { id: 1, numero: 'Tema 1', titulo: 'Aprobación de presupuesto para pintura e impermeabilización' },
+}) {
     const { usuario } = useAuth();
     const esAdministrador = usuario?.rol === 'ADMINISTRADOR';
+    const idTemaActivo = temaActual?.id ?? 1;
 
-    const [mensajes, setMensajes] = useState(MENSAJES_INICIALES);
+    const [mensajesPorTema, setMensajesPorTema] = useState(MENSAJES_POR_TEMA_INICIALES);
     const [nuevoMensaje, setNuevoMensaje] = useState('');
 
     useEffect(() => {
         try {
-            const guardados = localStorage.getItem('consorciosync_foro_mensajes');
+            const guardados = localStorage.getItem('consorciosync_foro_mensajes_v2');
             if (guardados) {
-                setMensajes(JSON.parse(guardados));
+                setMensajesPorTema({
+                    ...MENSAJES_POR_TEMA_INICIALES,
+                    ...JSON.parse(guardados),
+                });
             }
         } catch {
-            // Fallback a mensajes iniciales
+            // Fallback a mensajes iniciales por tema
         }
     }, []);
 
-    const actualizarMensajes = (nuevaLista) => {
-        setMensajes(nuevaLista);
-        localStorage.setItem('consorciosync_foro_mensajes', JSON.stringify(nuevaLista));
-    };
+    const listaMensajesTema = mensajesPorTema[idTemaActivo] || MENSAJES_POR_TEMA_INICIALES[1];
 
     const enviarMensaje = (e) => {
         e.preventDefault();
@@ -65,41 +127,50 @@ export default function ForoDebate({ faseActual = 'ABIERTA' }) {
             tiempo: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
 
-        actualizarMensajes([...mensajes, nuevoItem]);
+        const actualizados = {
+            ...mensajesPorTema,
+            [idTemaActivo]: [...listaMensajesTema, nuevoItem],
+        };
+
+        setMensajesPorTema(actualizados);
+        localStorage.setItem('consorciosync_foro_mensajes_v2', JSON.stringify(actualizados));
         setNuevoMensaje('');
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[580px]">
-            {/* Cabecera del Foro */}
-            <div className="bg-slate-900 text-white p-4 rounded-t-xl flex justify-between items-center border-b border-slate-800">
-                <div>
-                    <h2 className="font-bold text-base flex items-center gap-2">
-                        <span>💬</span> Foro Asíncrono de Deliberación
-                    </h2>
-                    <p className="text-xs text-slate-300 mt-0.5">
+        <Card className="flex flex-col h-[620px]">
+            {/* Cabecera del Foro mediante CardHeader */}
+            <CardHeader className="p-4 flex justify-between items-center">
+                <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-2">
+                        <Badge variant="darkInfo" size="sm" shape="rounded">
+                            {temaActual?.numero || `Tema ${idTemaActivo}`}
+                        </Badge>
+                        <h2 className="font-bold text-sm md:text-base truncate">
+                            💬 Foro Asíncrono de Deliberación
+                        </h2>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1 truncate">
                         {faseActual === 'ABIERTA'
-                            ? '🟢 Debate y sufragio habilitados en simultáneo'
+                            ? `🟢 Debate concurrente activo (${listaMensajesTema.length} intervenciones)`
                             : faseActual === 'CUARTO_INTERMEDIO'
                             ? '⏸️ Pausado por Cuarto Intermedio'
                             : '🔒 Asamblea Cerrada (Modo Lectura)'}
                     </p>
                 </div>
 
-                <span
-                    className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded border ${
-                        esAdministrador
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                            : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                    }`}
+                <Badge
+                    variant={esAdministrador ? 'darkWarning' : 'darkInfo'}
+                    size="sm"
+                    shape="rounded"
                 >
                     {esAdministrador ? 'Moderador (Admin)' : 'Derecho a Voz Activo'}
-                </span>
-            </div>
+                </Badge>
+            </CardHeader>
 
-            {/* Lista de Mensajes */}
+            {/* Lista de Mensajes del Tema Activo */}
             <div className="flex-grow p-4 overflow-y-auto bg-slate-50 space-y-4">
-                {mensajes.map((msg) => (
+                {listaMensajesTema.map((msg) => (
                     <div
                         key={msg.id}
                         className={`flex flex-col ${
@@ -111,16 +182,13 @@ export default function ForoDebate({ faseActual = 'ABIERTA' }) {
                         }`}
                     >
                         {msg.rol === 'SISTEMA' ? (
-                            <div className="bg-amber-100 text-amber-950 border border-amber-300 text-xs font-bold px-4 py-2 rounded-lg my-2 text-center shadow-sm">
+                            <Card variant="warning" className="text-xs font-bold px-4 py-2 my-2 text-center">
                                 {msg.texto}
-                            </div>
+                            </Card>
                         ) : (
-                            <div
-                                className={`max-w-[82%] rounded-xl p-3 ${
-                                    msg.rol === 'ADMINISTRADOR'
-                                        ? 'bg-white border border-slate-300 shadow-sm'
-                                        : 'bg-blue-100 border border-blue-200'
-                                }`}
+                            <Card
+                                variant={msg.rol === 'ADMINISTRADOR' ? 'default' : 'info'}
+                                className="max-w-[85%] p-3"
                             >
                                 <div className="flex justify-between items-center gap-4 mb-1">
                                     <span
@@ -133,48 +201,45 @@ export default function ForoDebate({ faseActual = 'ABIERTA' }) {
                                     <span className="text-[10px] text-slate-400">{msg.tiempo}</span>
                                 </div>
                                 <p className="text-sm text-slate-700 leading-relaxed">{msg.texto}</p>
-                            </div>
+                            </Card>
                         )}
                     </div>
                 ))}
             </div>
 
-            {/* Input del Foro según el estado de la Asamblea (ABIERTA / CUARTO_INTERMEDIO / CERRADA) */}
+            {/* Input del Foro según el estado de la Asamblea */}
             <div className="p-4 border-t border-slate-200 bg-white rounded-b-xl">
                 {faseActual === 'ABIERTA' ? (
                     <form onSubmit={enviarMensaje} className="flex gap-2">
-                        <input
+                        <Input
                             type="text"
                             value={nuevoMensaje}
                             onChange={(e) => setNuevoMensaje(e.target.value)}
                             placeholder={
                                 esAdministrador
-                                    ? 'Responder consulta oficial como Administración...'
-                                    : 'Escriba su argumento (puede debatir antes o después de votar)...'
+                                    ? `Responder en ${temaActual?.numero || 'este tema'} como Administración...`
+                                    : `Debatir en ${temaActual?.numero || 'este tema'} (puede opinar antes o después de votar)...`
                             }
-                            className="flex-grow p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                            className="flex-grow"
                         />
-                        <button
-                            type="submit"
-                            className="bg-blue-700 hover:bg-blue-800 text-white px-5 rounded-lg font-bold text-sm cursor-pointer transition-colors"
-                        >
+                        <Button type="submit" variant="primary">
                             Enviar
-                        </button>
+                        </Button>
                     </form>
                 ) : faseActual === 'CUARTO_INTERMEDIO' ? (
-                    <div className="text-center p-3 bg-amber-50 rounded-lg border border-amber-300">
-                        <p className="text-xs text-amber-900 font-bold">
+                    <Card variant="warning" className="text-center p-3">
+                        <p className="text-xs font-bold">
                             ⏸️ Asamblea en Cuarto Intermedio. El envío de mensajes se encuentra temporalmente pausado.
                         </p>
-                    </div>
+                    </Card>
                 ) : (
-                    <div className="text-center p-3 bg-slate-100 rounded-lg border border-slate-300">
+                    <Card variant="subtle" className="text-center p-3">
                         <p className="text-xs text-slate-600 font-bold">
                             🔒 Asamblea Cerrada. El hilo deliberativo ha quedado archivado en modo de solo lectura.
                         </p>
-                    </div>
+                    </Card>
                 )}
             </div>
-        </div>
+        </Card>
     );
 }
