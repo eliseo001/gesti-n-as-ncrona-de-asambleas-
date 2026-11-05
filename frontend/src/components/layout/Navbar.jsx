@@ -181,6 +181,16 @@ export default function Navbar() {
                                         💡 Mis Propuestas
                                     </button>
                                     <button
+                                        onClick={() => router.push('/asamblea/delegar')}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                                            pathname.startsWith('/asamblea/delegar')
+                                                ? 'bg-blue-700 text-white'
+                                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                        }`}
+                                    >
+                                        📜 Delegar Voto (Poder)
+                                    </button>
+                                    <button
                                         onClick={() => router.push('/asamblea/notificacion-ausentes')}
                                         className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                                             pathname.startsWith('/asamblea/notificacion-ausentes')
@@ -200,6 +210,16 @@ export default function Navbar() {
                                         }`}
                                     >
                                         📚 Actas e Historial
+                                    </button>
+                                    <button
+                                        onClick={() => router.push('/onboarding')}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
+                                            pathname === '/onboarding'
+                                                ? 'bg-blue-700 text-white border-blue-500'
+                                                : 'bg-slate-800 text-blue-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                    >
+                                        ➕ Reclamar nueva unidad
                                     </button>
                                 </>
                             )}
@@ -301,19 +321,36 @@ export default function Navbar() {
                         {/* Tarjeta de Usuario Logueado */}
                         <div className="bg-slate-800/90 border border-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2.5">
                             <Badge
-                                variant={esAdmin ? 'warning' : 'darkSuccess'}
+                                variant={
+                                    esAdmin
+                                        ? 'warning'
+                                        : usuario.kycVerificado === false
+                                        ? 'darkWarning'
+                                        : 'darkSuccess'
+                                }
                                 size="sm"
                                 shape="rounded"
                             >
-                                {usuario.rol}
+                                {esAdmin
+                                    ? 'ADMINISTRADOR'
+                                    : usuario.kycVerificado === false
+                                    ? '⏳ KYC PENDIENTE'
+                                    : '✓ VERIFICADO'}
                             </Badge>
                             <div className="text-right leading-tight">
                                 <span className="text-xs font-bold text-white block">
                                     {usuario.nombre}
                                 </span>
-                                <span className="text-[11px] text-slate-400 block">
-                                    {usuario.unidad}
-                                    {!esAdmin && ` • Coef. ${Number(usuario.coeficiente).toFixed(2)}%`}
+                                <span className="text-[11px] text-slate-300 block">
+                                    {esAdmin
+                                        ? 'Administración Central'
+                                        : `Titular: ${
+                                              Array.isArray(usuario.unidades) && usuario.unidades.length > 0
+                                                  ? usuario.unidades.map((u) => `UF ${u}`).join(', ')
+                                                  : usuario.unidad
+                                          } • Peso Electoral: ${Number(
+                                              usuario.coeficienteTotal ?? usuario.coeficiente ?? 0
+                                          ).toFixed(2)}%`}
                                 </span>
                             </div>
                         </div>

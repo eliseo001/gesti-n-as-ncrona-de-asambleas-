@@ -91,16 +91,22 @@ export default function LobbyAsamblea() {
 
                     <div className="flex flex-wrap gap-2">
                         <button
+                            onClick={() => router.push('/asamblea/delegar')}
+                            className="bg-blue-700 hover:bg-blue-600 text-white font-semibold py-2 px-3.5 rounded-lg text-xs border border-blue-500 transition-colors cursor-pointer shadow-sm"
+                        >
+                            📜 Delegar Voto (Carta Poder)
+                        </button>
+                        <button
                             onClick={() => router.push('/asamblea/propuestas')}
                             className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-700 transition-colors cursor-pointer"
                         >
                             💡 Iniciativas Vecinales
                         </button>
                         <button
-                            onClick={() => router.push('/asamblea/onboarding')}
-                            className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-700 transition-colors cursor-pointer"
+                            onClick={() => router.push('/onboarding')}
+                            className="bg-slate-800 hover:bg-slate-700 text-blue-300 font-semibold py-2 px-3.5 rounded-lg text-xs border border-slate-700 transition-colors cursor-pointer"
                         >
-                            🛡️ Mi Acreditación KYC
+                            ➕ Reclamar nueva unidad
                         </button>
                         <button
                             onClick={() => router.push('/asamblea/historial')}

@@ -142,10 +142,17 @@ export default function LoginPage() {
                 onClick={() => autocompletarCredenciales('propietario4b@consorcio.com')}
                 className="p-2.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-left transition-colors cursor-pointer"
               >
-                <span className="font-bold text-slate-900 block">🏠 Propietario 4B</span>
+                <span className="font-bold text-slate-900 block">🏠 Propietario Verificado</span>
                 <span className="text-[11px] text-slate-500 font-mono">propietario4b@consorcio.com</span>
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => router.push('/onboarding')}
+              className="mt-2.5 w-full p-2.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-bold transition-colors cursor-pointer"
+            >
+              ✉️ ¿Nuevo Propietario Invitado? Completar Onboarding y KYC →
+            </button>
           </div>
         </div>
       </div>

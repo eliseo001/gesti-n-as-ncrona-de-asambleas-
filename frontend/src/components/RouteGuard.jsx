@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import Navbar from './layout/Navbar';
 
-const RUTAS_PUBLICAS = ['/', '/recuperar', '/no-autorizado', '/verificar'];
+const RUTAS_PUBLICAS = ['/', '/recuperar', '/no-autorizado', '/verificar', '/onboarding'];
 
 export default function RouteGuard({ children }) {
     const { usuario, cargandoSesion } = useAuth();
@@ -34,6 +34,7 @@ export default function RouteGuard({ children }) {
                 pathname === '/asamblea' ||
                 pathname.startsWith('/asamblea/onboarding') ||
                 pathname.startsWith('/asamblea/propuestas') ||
+                pathname.startsWith('/asamblea/delegar') ||
                 pathname.startsWith('/asamblea/notificacion-ausentes');
 
             if (esRutaExclusivaPropietario && usuario.rol !== 'PROPIETARIO') {

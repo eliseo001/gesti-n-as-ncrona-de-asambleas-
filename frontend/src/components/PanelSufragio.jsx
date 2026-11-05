@@ -1,8 +1,8 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-import { Card, Button, Badge, Input, ProgressBar } from './ui';
+import { Card, Button, Badge, Input, ProgressBar, Modal } from './ui';
 
 const TEMA_POR_DEFECTO = {
     id: 1,
@@ -35,77 +35,165 @@ export default function PanelSufragio({
     onIrSiguientePendiente,
 }) {
     const router = useRouter();
-    const { usuario } = useAuth();
+    const {
+        usuario,
+        obtenerPadronConPonderacion,
+        superficieTotalDelEdificio,
+        obtenerResumenRepresentacion,
+    } = useAuth();
     const esAdministrador = usuario?.rol === 'ADMINISTRADOR';
+
+    // Consultamos las utilidades centralizadas de Cartas Poder en AuthContext
+    const resumenRepresentacion = obtenerResumenRepresentacion(usuario?.email);
+    const {
+        tieneVotoDelegado,
+        poderCedidoAprobado,
+        esApoderado,
+        nombresPoderdantes,
+        coeficienteDelegadoTotalExacto,
+        superficieDelegadaTotalM2,
+    } = resumenRepresentacion;
+
+    // 1. Ejecutamos el Motor de Ponderación Automática (m2 -> %)
+    const padronPonderado = useMemo(
+        () => obtenerPadronConPonderacion(),
+        [obtenerPadronConPonderacion]
+    );
 
     const [votoLocal, setVotoLocal] = useState(null);
     const [intentosLocal, setIntentosLocal] = useState(2);
 
+    // Modal de Seguridad para Rectificar Voto
     const [mostrarModal, setMostrarModal] = useState(false);
     const [passwordTemp, setPasswordTemp] = useState('');
+
+    // Modal del Comprobante de Sufragio (Recibo Criptográfico PDF Simulado)
+    const [mostrarModalRecibo, setMostrarModalRecibo] = useState(false);
+    const [timestampVotoUtc, setTimestampVotoUtc] = useState(
+        () => new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC'
+    );
 
     const votoEmitido = onEmitirVoto ? votoTemaActual : votoLocal;
     const intentosRestantes = onRectificarVoto ? intentosTemaActual : intentosLocal;
 
-    const coeficienteUsuario = usuario?.coeficiente ? Number(usuario.coeficiente).toFixed(2) : '5.20';
-    const unidadUsuario = usuario?.unidad || 'UF 4B + Cochera 12';
+    const listaUnidades =
+        Array.isArray(usuario?.unidades) && usuario.unidades.length > 0
+            ? usuario.unidades.map((u) => String(u).replace(/^UF\s*/i, '').trim().toUpperCase())
+            : ['5A', 'C04'];
+
+    // Filtramos las unidades del propietario desde el Motor de Ponderación
+    const unidadesPonderadasTitular = useMemo(
+        () =>
+            padronPonderado.filter((u) =>
+                listaUnidades.includes(String(u.depto).toUpperCase())
+            ),
+        [padronPonderado, listaUnidades]
+    );
+
+    // Cálculos internos con .reduce() manteniendo MÁXIMA PRECISIÓN DECIMAL (sin redondeo prematuro)
+    const superficieTitularM2 = useMemo(
+        () =>
+            unidadesPonderadasTitular.reduce(
+                (acc, u) => acc + Number(u.superficieM2 || 0),
+                0
+            ),
+        [unidadesPonderadasTitular]
+    );
+
+    const pesoElectoralPropioExacto = useMemo(
+        () =>
+            unidadesPonderadasTitular.reduce(
+                (acc, u) => acc + Number(u.coeficientePorcentual || 0),
+                0
+            ),
+        [unidadesPonderadasTitular]
+    );
+
+    // Si es Apoderado de un poder APROBADO, sumamos dinámicamente el coeficiente del poderdante
+    const pesoElectoralExacto =
+        pesoElectoralPropioExacto + Number(coeficienteDelegadoTotalExacto || 0);
+    const superficieTotalVotanteM2 =
+        superficieTitularM2 + Number(superficieDelegadaTotalM2 || 0);
+
+    // Solo usamos Number(...).toFixed(2) al momento de renderizar en la UI
+    const coeficienteUsuarioUI = Number(pesoElectoralExacto).toFixed(2);
+    const coeficientePropioUI = Number(pesoElectoralPropioExacto).toFixed(2);
+    const coeficienteDelegadoUI = Number(coeficienteDelegadoTotalExacto || 0).toFixed(2);
+    const unidadUsuario = listaUnidades.map((u) => `UF ${u}`).join(', ');
+
+    const desgloseUnidadesUI =
+        unidadesPonderadasTitular.length > 0
+            ? unidadesPonderadasTitular
+                  .map(
+                      (u) =>
+                          `${u.tipo === 'Departamento' ? 'Depto' : u.tipo} ${u.depto} (${u.superficieM2} m2 - ${Number(u.coeficientePorcentual).toFixed(2)}%)`
+                  )
+                  .join(' + ')
+            : `${unidadUsuario} (${coeficienteUsuarioUI}%)`;
+
+    // Verificar si alguna de las unidades del titular está marcada como MOROSO en el Padrón Maestro
+    const tieneUnidadMorosa = unidadesPonderadasTitular.some(
+        (u) => u.estadoContable === 'MOROSO'
+    );
+
+    const hashReciboSha256 =
+        '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+
     const tendenciaBase = temaActual?.tendencia || TEMA_POR_DEFECTO.tendencia;
 
     // =========================================================================
-    // HU-010: ESTADO REACTIVO DE ESCRUTINIO EN VIVO (SIMULACIÓN WEBSOCKETS)
+    // HU-010: ESTADO REACTIVO DE ESCRUTINIO EN VIVO SOBRE BASE EXACTA DEL 100%
     // =========================================================================
     const [escrutinioVivo, setEscrutinioVivo] = useState({
-        aFavor: tendenciaBase.aFavor,
-        enContra: tendenciaBase.enContra,
-        abstencion: tendenciaBase.abstencion,
-        coeficienteParticipacion: tendenciaBase.coeficienteParticipacion,
+        aFavor: Number(tendenciaBase.aFavor),
+        enContra: Number(tendenciaBase.enContra),
+        abstencion: 100 - Number(tendenciaBase.aFavor) - Number(tendenciaBase.enContra),
+        coeficienteParticipacion: Number(tendenciaBase.coeficienteParticipacion),
         unidadesSufragaron: tendenciaBase.unidadesSufragaron,
-        unidadesTotales: tendenciaBase.unidadesTotales,
+        unidadesTotales: padronPonderado.length || tendenciaBase.unidadesTotales,
         ultimoPulso: 'Sincronizado',
     });
 
-    // Sincronizar con el tema seleccionado en el Sidebar
     useEffect(() => {
         const base = temaActual?.tendencia || TEMA_POR_DEFECTO.tendencia;
+        const aFavorBase = Number(base.aFavor);
+        const enContraBase = Number(base.enContra);
         setEscrutinioVivo({
-            aFavor: base.aFavor,
-            enContra: base.enContra,
-            abstencion: base.abstencion,
-            coeficienteParticipacion: base.coeficienteParticipacion,
+            aFavor: aFavorBase,
+            enContra: enContraBase,
+            abstencion: Math.max(0, 100 - aFavorBase - enContraBase),
+            coeficienteParticipacion: Number(base.coeficienteParticipacion),
             unidadesSufragaron: base.unidadesSufragaron,
-            unidadesTotales: base.unidadesTotales,
+            unidadesTotales: padronPonderado.length || base.unidadesTotales,
             ultimoPulso: new Date().toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit',
             }),
         });
-    }, [temaActual?.id]);
+    }, [temaActual?.id, padronPonderado.length]);
 
-    // Simulación para defensa de tesis: Actualización en vivo cada 3 segundos (HU-010)
     useEffect(() => {
         if (faseActual !== 'ABIERTA') return;
 
         const intervalo = setInterval(() => {
             setEscrutinioVivo((prev) => {
-                // Variación aleatoria suave entre -2.1% y +2.1% para demostrar reactividad en vivo
-                const delta = Number(((Math.random() - 0.48) * 3.6).toFixed(1));
-                const nuevoAFavor = Math.min(85, Math.max(12, Number((prev.aFavor + delta).toFixed(1))));
-                const restoDisponible = Number((100 - nuevoAFavor).toFixed(1));
+                // Cálculos en precisión decimal completa garantizando que aFavor + enContra + abstencion === 100
+                const delta = (Math.random() - 0.48) * 1.8;
+                const nuevoAFavor = Math.min(85, Math.max(12, prev.aFavor + delta));
+                const restoDisponible = 100 - nuevoAFavor;
                 const nuevaAbstencion = Math.min(
                     20,
-                    Math.max(5, Number((prev.abstencion + (Math.random() - 0.5) * 1.2).toFixed(1)))
+                    Math.max(5, prev.abstencion + (Math.random() - 0.5) * 0.8)
                 );
-                const nuevoEnContra = Math.max(
-                    5,
-                    Number((restoDisponible - nuevaAbstencion).toFixed(1))
-                );
+                const nuevoEnContra = Math.max(5, restoDisponible - nuevaAbstencion);
+                const abstencionAjustada = 100 - nuevoAFavor - nuevoEnContra;
 
                 return {
                     ...prev,
                     aFavor: nuevoAFavor,
                     enContra: nuevoEnContra,
-                    abstencion: Number((100 - nuevoAFavor - nuevoEnContra).toFixed(1)),
+                    abstencion: abstencionAjustada,
                     ultimoPulso: new Date().toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -122,32 +210,44 @@ export default function PanelSufragio({
         totalTemas > 0 ? Math.round((temasCompletados / totalTemas) * 100) : 0;
 
     const emitirSufragio = (valorVoto) => {
-        if (esAdministrador || faseActual !== 'ABIERTA') return;
+        if (
+            esAdministrador ||
+            faseActual !== 'ABIERTA' ||
+            tieneUnidadMorosa ||
+            tieneVotoDelegado
+        )
+            return;
+        const nuevoTimestampUtc =
+            new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+        setTimestampVotoUtc(nuevoTimestampUtc);
+
         if (onEmitirVoto) {
             onEmitirVoto(temaActual.id, valorVoto);
         } else {
             setVotoLocal(valorVoto);
         }
 
-        // Impacto inmediato del voto propio sobre la barra en tiempo real
-        const peso = Number(coeficienteUsuario) || 5.2;
+        // Extraemos el peso electoral directamente del cálculo dinámico en coma flotante sin redondear
+        const pesoExacto = pesoElectoralExacto;
+
         setEscrutinioVivo((prev) => {
             let { aFavor, enContra, abstencion } = prev;
             if (valorVoto === 'A_FAVOR') {
-                aFavor = Math.min(90, Number((aFavor + peso).toFixed(1)));
-                enContra = Math.max(5, Number((100 - aFavor - abstencion).toFixed(1)));
+                aFavor = Math.min(90, aFavor + pesoExacto);
+                enContra = Math.max(5, 100 - aFavor - abstencion);
             } else if (valorVoto === 'EN_CONTRA') {
-                enContra = Math.min(90, Number((enContra + peso).toFixed(1)));
-                aFavor = Math.max(5, Number((100 - enContra - abstencion).toFixed(1)));
+                enContra = Math.min(90, enContra + pesoExacto);
+                aFavor = Math.max(5, 100 - enContra - abstencion);
             } else {
-                abstencion = Math.min(40, Number((abstencion + peso).toFixed(1)));
-                aFavor = Math.max(5, Number((100 - enContra - abstencion).toFixed(1)));
+                abstencion = Math.min(40, abstencion + pesoExacto);
+                aFavor = Math.max(5, 100 - enContra - abstencion);
             }
             return {
                 ...prev,
                 aFavor,
                 enContra,
-                abstencion: Number((100 - aFavor - enContra).toFixed(1)),
+                // Garantiza un total matemático exacto del 100%
+                abstencion: 100 - aFavor - enContra,
             };
         });
 
@@ -181,9 +281,11 @@ export default function PanelSufragio({
     };
 
     // =========================================================================
-    // VISTA 1: ROL ADMINISTRADOR -> MONITOR DE URNA CON TENDENCIAS EN VIVO
+    // VISTA 1: ROL ADMINISTRADOR -> MONITOR DE URNA CON MOTOR DE PONDERACIÓN
     // =========================================================================
     if (esAdministrador) {
+        const primerosBloques = padronPonderado.slice(0, 2);
+
         return (
             <Card className="p-6 flex flex-col justify-between min-h-[620px]">
                 <div className="space-y-4">
@@ -196,7 +298,7 @@ export default function PanelSufragio({
                                 Monitor de Urna y Tendencias en Vivo
                             </h2>
                             <p className="text-xs text-slate-500">
-                                Exigencia legal del punto: <strong>{temaActual?.normativa}</strong>
+                                Base Catastral: <strong>{Number(superficieTotalDelEdificio).toFixed(2)} m² (100.00%)</strong> • {temaActual?.normativa}
                             </p>
                         </div>
 
@@ -215,10 +317,10 @@ export default function PanelSufragio({
                                 Participación Coeficiente
                             </span>
                             <span className="text-xl font-extrabold text-blue-700">
-                                {escrutinioVivo.coeficienteParticipacion.toFixed(2)}%
+                                {Number(escrutinioVivo.coeficienteParticipacion).toFixed(2)}%
                             </span>
                             <ProgressBar
-                                porcentaje={escrutinioVivo.coeficienteParticipacion}
+                                porcentaje={Number(escrutinioVivo.coeficienteParticipacion).toFixed(2)}
                                 color="blue"
                                 size="sm"
                                 className="mt-1.5"
@@ -230,30 +332,27 @@ export default function PanelSufragio({
 
                         <Card variant="subtle" className="p-3">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">
-                                Unidades que Sufragaron
+                                Unidades Registradas en Padrón
                             </span>
                             <span className="text-xl font-extrabold text-emerald-700">
-                                {escrutinioVivo.unidadesSufragaron} / {escrutinioVivo.unidadesTotales} UF
+                                {padronPonderado.length} UF ({Number(superficieTotalDelEdificio).toFixed(0)} m²)
                             </span>
                             <ProgressBar
-                                porcentaje={
-                                    (escrutinioVivo.unidadesSufragaron / escrutinioVivo.unidadesTotales) * 100
-                                }
+                                porcentaje={100}
                                 color="emerald"
                                 size="sm"
                                 className="mt-1.5"
                             />
                             <span className="text-[10px] text-slate-500 mt-1 block">
-                                Pendientes / Ausentes: {escrutinioVivo.unidadesTotales - escrutinioVivo.unidadesSufragaron} UF
+                                Total matemático ponderado: 100.00%
                             </span>
                         </Card>
                     </div>
 
-                    {/* HU-010: Barras de Resultado Parcial en Tiempo Real */}
                     <Card variant="subtle" className="p-4 space-y-3">
                         <div className="flex justify-between items-center">
                             <h3 className="text-xs font-bold uppercase text-slate-700">
-                                📊 Escrutinio en Tiempo Real ({temaActual?.numero})
+                                📊 Escrutinio en Tiempo Real (Base Exacta 100.00%)
                             </h3>
                             <span className="text-[10px] font-mono text-slate-500">
                                 Pulso WS: {escrutinioVivo.ultimoPulso}
@@ -262,40 +361,47 @@ export default function PanelSufragio({
 
                         <ProgressBar
                             label="👍 A Favor"
-                            porcentaje={escrutinioVivo.aFavor}
+                            porcentaje={Number(escrutinioVivo.aFavor).toFixed(2)}
                             color="emerald"
+                            detalleDerecha={`${Number(escrutinioVivo.aFavor).toFixed(2)}%`}
                         />
                         <ProgressBar
                             label="👎 En Contra"
-                            porcentaje={escrutinioVivo.enContra}
+                            porcentaje={Number(escrutinioVivo.enContra).toFixed(2)}
                             color="red"
+                            detalleDerecha={`${Number(escrutinioVivo.enContra).toFixed(2)}%`}
                         />
                         <ProgressBar
                             label="✋ Abstención"
-                            porcentaje={escrutinioVivo.abstencion}
+                            porcentaje={Number(escrutinioVivo.abstencion).toFixed(2)}
                             color="slate"
+                            detalleDerecha={`${Number(escrutinioVivo.abstencion).toFixed(2)}%`}
                         />
                     </Card>
 
                     <div className="space-y-1.5">
                         <h3 className="text-[11px] font-bold uppercase text-slate-700">
-                            Últimos Bloques Sellados en Urna (SHA-256)
+                            Últimos Bloques Ponderados Sellados en Urna (SHA-256)
                         </h3>
                         <Card variant="dark" className="p-3 font-mono text-[11px] space-y-1.5">
-                            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                                <span className="text-blue-400 font-bold">
-                                    Bloque #{escrutinioVivo.unidadesSufragaron} (UF 4B + C12)
-                                </span>
-                                <span className="text-slate-400">Coef: 5.20%</span>
-                                <span className="text-emerald-400">9f86d081884c...</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-blue-400 font-bold">
-                                    Bloque #{escrutinioVivo.unidadesSufragaron - 1} (UF 2B)
-                                </span>
-                                <span className="text-slate-400">Coef: 6.25%</span>
-                                <span className="text-emerald-400">8c4e2b1a9f07...</span>
-                            </div>
+                            {primerosBloques.map((u, idx) => (
+                                <div
+                                    key={u.id}
+                                    className={`flex justify-between items-center ${
+                                        idx === 0 ? 'border-b border-slate-800 pb-1' : ''
+                                    }`}
+                                >
+                                    <span className="text-blue-400 font-bold">
+                                        UF {u.depto} ({u.superficieM2} m2)
+                                    </span>
+                                    <span className="text-slate-300">
+                                        Coef: {Number(u.coeficientePorcentual).toFixed(2)}%
+                                    </span>
+                                    <span className="text-emerald-400">
+                                        {idx === 0 ? '9f86d081884c...' : '8c4e2b1a9f07...'}
+                                    </span>
+                                </div>
+                            ))}
                         </Card>
                     </div>
                 </div>
@@ -303,7 +409,7 @@ export default function PanelSufragio({
                 <Card variant="subtle" className="p-3.5 flex items-center justify-between mt-4">
                     <div className="text-xs text-slate-600">
                         <span className="font-bold text-slate-800 block">Control de Sesión</span>
-                        Gestione el Cuarto Intermedio o cierre el escrutinio desde el Panel Admin.
+                        Gestione el Padrón de m² o cierre el escrutinio desde el Panel Admin.
                     </div>
                     <Button variant="secondary" size="sm" onClick={() => router.push('/admin')}>
                         ⚙️ Panel Admin
@@ -314,11 +420,131 @@ export default function PanelSufragio({
     }
 
     // =========================================================================
-    // VISTA 2: ROL PROPIETARIO -> URNA CRIPTOGRÁFICA + ESCRUTINIO LIVE (HU-010)
+    // VISTA 2: ROL PROPIETARIO -> URNA CRIPTOGRÁFICA + RECIBO DE VOTO DINÁMICO
     // =========================================================================
     return (
         <Card className="p-6 flex flex-col justify-between min-h-[620px] relative">
-            {/* Modal de Seguridad para Rectificación de Voto */}
+
+            {/* MODAL 1: COMPROBANTE DE SUFRAGIO (RECIBO CRIPTOGRÁFICO PDF SIMULADO) */}
+            <Modal
+                isOpen={mostrarModalRecibo}
+                onClose={() => setMostrarModalRecibo(false)}
+                badge={
+                    <Badge variant="darkSuccess" size="sm" shape="rounded">
+                        📄 Recibo Criptográfico Oficial • SHA-256
+                    </Badge>
+                }
+                title="Comprobante de Sufragio Electrónico"
+                subtitle="Consorcio Edificio Las Margaritas • Ley N° 26.994 (Art. 2060 CCyCN)"
+                maxWidth="max-w-lg"
+            >
+                <div className="space-y-4">
+                    <Card variant="subtle" className="p-5 border-2 border-slate-300 space-y-3 text-xs">
+                        <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
+                            <div>
+                                <span className="font-extrabold text-slate-900 text-sm block">
+                                    CONSORCIOSYNC • ACTA DE URNA
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                    Punto tratado: {temaActual?.numero} — {temaActual?.titulo}
+                                </span>
+                            </div>
+                            <Badge variant="success" size="sm" shape="rounded">
+                                SELLADO
+                            </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-1">
+                            <div>
+                                <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                                    Nombre del Titular
+                                </span>
+                                <span className="font-bold text-slate-900 text-sm">
+                                    {usuario?.nombre || 'Propietario'}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                                    Unidad(es) y Superficie
+                                </span>
+                                <span className="font-bold text-blue-800 text-xs">
+                                    {desgloseUnidadesUI}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                                    Coeficiente Ponderado
+                                </span>
+                                <span className="font-mono font-extrabold text-slate-900 text-sm">
+                                    {coeficienteUsuarioUI}% ({superficieTitularM2} m² / {superficieTotalDelEdificio} m²)
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                                    Sentido del Voto Emitido
+                                </span>
+                                <Badge
+                                    variant={
+                                        votoEmitido === 'A_FAVOR'
+                                            ? 'success'
+                                            : votoEmitido === 'EN_CONTRA'
+                                            ? 'danger'
+                                            : 'secondary'
+                                    }
+                                    size="sm"
+                                    shape="rounded"
+                                >
+                                    {votoEmitido ? votoEmitido.replace('_', ' ') : 'REGISTRADO'}
+                                </Badge>
+                            </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200 space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold uppercase text-slate-400">
+                                    Fecha y Hora Exacta (UTC):
+                                </span>
+                                <span className="font-mono font-bold text-slate-700">
+                                    {timestampVotoUtc}
+                                </span>
+                            </div>
+
+                            <div>
+                                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                                    Hash Criptográfico SHA-256 Generado:
+                                </span>
+                                <div className="bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono text-[11px] break-all">
+                                    {hashReciboSha256}
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Leyenda Legal Obligatoria */}
+                    <Card variant="info" className="p-3.5 text-xs text-center font-semibold">
+                        ⚖️ &ldquo;Este comprobante garantiza la inmutabilidad de su decisión en la base de datos.&rdquo;
+                    </Card>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button
+                            variant="light"
+                            size="sm"
+                            onClick={() => setMostrarModalRecibo(false)}
+                        >
+                            Cerrar Vista Previa
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => window.print()}
+                        >
+                            🖨️ Imprimir / Guardar PDF
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* MODAL 2: SEGURIDAD PARA RECTIFICACIÓN DE VOTO */}
             {mostrarModal && (
                 <div className="absolute inset-0 z-10 bg-slate-900/60 rounded-xl flex items-center justify-center p-6 backdrop-blur-sm">
                     <Card className="p-6 shadow-2xl w-full">
@@ -375,19 +601,32 @@ export default function PanelSufragio({
                 />
             </Card>
 
-            {/* Cabecera de Urna con Badge HU-010: 🟢 EN VIVO (WebSockets) */}
+            {/* Cabecera de Urna con Desglose Dinámico de Superficie, Coeficiente y Cartas Poder */}
             <div className="border-b border-slate-200 pb-3 mb-3 flex flex-wrap justify-between items-start gap-2">
-                <div>
-                    <div className="flex items-center gap-2">
+                <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="primary" size="sm" shape="rounded">
                             {temaActual?.numero || 'Tema 1'}
                         </Badge>
                         <h2 className="text-base md:text-lg font-bold text-slate-800">
                             Urna Criptográfica SHA-256
                         </h2>
+                        {esApoderado && (
+                            <Badge variant="info" size="sm" shape="rounded">
+                                👤 Votando en representación propia y de {nombresPoderdantes}
+                            </Badge>
+                        )}
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                        Titular: <strong>{usuario?.nombre}</strong> • Peso: <strong>{coeficienteUsuario}%</strong> ({unidadUsuario})
+                    <p className="text-xs text-slate-600">
+                        Titular: <strong>{usuario?.nombre}</strong> •{' '}
+                        <span className="font-semibold text-slate-800">{desgloseUnidadesUI}</span>
+                    </p>
+                    <p className="text-[11px] text-blue-700 font-bold">
+                        ⚙️ Peso Electoral Total en Urna: {coeficienteUsuarioUI}% (
+                        {esApoderado
+                            ? `Propio: ${coeficientePropioUI}% + Delegado: ${coeficienteDelegadoUI}% • ${superficieTotalVotanteM2} m²`
+                            : `${superficieTitularM2} m² sobre ${superficieTotalDelEdificio} m² totales = 100.00%`}
+                        )
                     </p>
                 </div>
 
@@ -428,10 +667,60 @@ export default function PanelSufragio({
                 </Card>
             ) : (
                 <div className="flex-grow flex flex-col justify-between space-y-3">
-                    {!votoEmitido ? (
+                    {usuario?.kycVerificado === false ? (
+                        <Card variant="warning" className="p-4 border-2 border-dashed space-y-2.5 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="text-xl">🔒</span>
+                                <h3 className="font-bold text-amber-950 text-sm">
+                                    Poder de Voto Restringido ({usuario?.estadoKyc || 'PENDIENTE_AUDITORIA'})
+                                </h3>
+                            </div>
+                            <p className="text-xs text-amber-900 leading-relaxed">
+                                Su cuenta se encuentra registrada pero aún no ha sido verificada por la Administración. Una vez aprobado su legajo KYC en el Panel de Control, se habilitará el sufragio.
+                            </p>
+                            <div className="flex justify-center gap-2 pt-1">
+                                <Button
+                                    variant="warning"
+                                    size="sm"
+                                    onClick={() => router.push('/onboarding')}
+                                >
+                                    🛡️ Ver Estado de mi Onboarding KYC
+                                </Button>
+                            </div>
+                        </Card>
+                    ) : tieneVotoDelegado ? (
+                        <Card
+                            variant="warning"
+                            className="p-5 border-2 border-amber-400 space-y-2 text-center"
+                        >
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="text-xl">🔒</span>
+                                <h3 className="font-extrabold text-amber-950 text-sm">
+                                    🔒 Voto bloqueado. Usted ha delegado su representación para esta asamblea.
+                                </h3>
+                            </div>
+                            <p className="text-xs text-amber-900 leading-relaxed">
+                                Su Carta Poder a favor de{' '}
+                                <strong>{poderCedidoAprobado?.emailApoderado}</strong> se encuentra{' '}
+                                <strong>APROBADA</strong>. Para evitar la duplicidad de sufragios, su coeficiente ({coeficientePropioUI}%) está siendo ejercido por su representante designado.
+                            </p>
+                        </Card>
+                    ) : tieneUnidadMorosa ? (
+                        <Card variant="danger" className="p-4 border-2 border-dashed space-y-2 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="text-xl">⚠️</span>
+                                <h3 className="font-bold text-red-900 text-sm">
+                                    Derecho a Voto Suspendido por Morosidad
+                                </h3>
+                            </div>
+                            <p className="text-xs text-red-800 leading-relaxed">
+                                Según el Reglamento de Copropiedad, su unidad registra mora contable. Usted conserva pleno <strong>derecho a voz en el Foro de Deliberación</strong>, pero no puede emitir sufragio hasta regularizar su situación.
+                            </p>
+                        </Card>
+                    ) : !votoEmitido ? (
                         <div className="space-y-2">
                             <p className="text-[11px] font-bold text-center text-slate-600 uppercase tracking-wider">
-                                Emitir Sufragio para {temaActual?.numero} ({temaActual?.normativa})
+                                Emitir Sufragio Ponderado ({superficieTitularM2} m² = {coeficienteUsuarioUI}%)
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                 <Button
@@ -440,7 +729,7 @@ export default function PanelSufragio({
                                     fullWidth
                                     onClick={() => emitirSufragio('A_FAVOR')}
                                 >
-                                    👍 A Favor ({coeficienteUsuario}%)
+                                    👍 A Favor ({coeficienteUsuarioUI}%)
                                 </Button>
                                 <Button
                                     variant="danger"
@@ -448,7 +737,7 @@ export default function PanelSufragio({
                                     fullWidth
                                     onClick={() => emitirSufragio('EN_CONTRA')}
                                 >
-                                    👎 En Contra ({coeficienteUsuario}%)
+                                    👎 En Contra ({coeficienteUsuarioUI}%)
                                 </Button>
                                 <Button
                                     variant="neutral"
@@ -456,7 +745,7 @@ export default function PanelSufragio({
                                     fullWidth
                                     onClick={() => emitirSufragio('ABSTENCION')}
                                 >
-                                    ✋ Abstención ({coeficienteUsuario}%)
+                                    ✋ Abstención ({coeficienteUsuarioUI}%)
                                 </Button>
                             </div>
                         </div>
@@ -466,7 +755,7 @@ export default function PanelSufragio({
                                 <div className="flex items-center justify-center gap-2">
                                     <span className="text-lg">✅</span>
                                     <h3 className="font-bold text-emerald-900 text-sm">
-                                        Voto Sellado en {temaActual?.numero}: {votoEmitido.replace('_', ' ')} ({coeficienteUsuario}%)
+                                        Voto Sellado en {temaActual?.numero}: {votoEmitido.replace('_', ' ')} ({superficieTitularM2} m² — {coeficienteUsuarioUI}%)
                                     </h3>
                                 </div>
                                 <p className="text-[10px] text-emerald-700 mt-0.5 font-mono">
@@ -474,7 +763,17 @@ export default function PanelSufragio({
                                 </p>
                             </Card>
 
-                            <div className="flex gap-2">
+                            {/* Botones de Acción Post-Voto: Descargar Comprobante + Rectificar + Siguiente */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <Button
+                                    variant="light"
+                                    size="sm"
+                                    fullWidth
+                                    onClick={() => setMostrarModalRecibo(true)}
+                                >
+                                    📄 Descargar Comprobante de Voto
+                                </Button>
+
                                 <Button
                                     variant="secondary"
                                     size="sm"
@@ -484,26 +783,26 @@ export default function PanelSufragio({
                                 >
                                     🔄 Rectificar Voto ({intentosRestantes} intentos)
                                 </Button>
-
-                                {temasCompletados < totalTemas && onIrSiguientePendiente && (
-                                    <Button
-                                        variant="warning"
-                                        size="sm"
-                                        onClick={onIrSiguientePendiente}
-                                        className="whitespace-nowrap"
-                                    >
-                                        Siguiente Tema →
-                                    </Button>
-                                )}
                             </div>
+
+                            {temasCompletados < totalTemas && onIrSiguientePendiente && (
+                                <Button
+                                    variant="warning"
+                                    size="sm"
+                                    fullWidth
+                                    onClick={onIrSiguientePendiente}
+                                >
+                                    Ir al Siguiente Tema Pendiente →
+                                </Button>
+                            )}
                         </div>
                     )}
 
-                    {/* HU-010: RESULTADOS PARCIALES EN TIEMPO REAL DEBAJO DE LOS BOTONES DE VOTACIÓN */}
+                    {/* HU-010: RESULTADOS PARCIALES EN TIEMPO REAL SOBRE EL 100% */}
                     <Card variant="subtle" className="p-3.5 space-y-2.5 mt-auto">
                         <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
                             <span className="text-[11px] font-extrabold uppercase text-slate-700">
-                                📡 Escrutinio Parcial en Tiempo Real (HU-010)
+                                📡 Escrutinio Parcial en Tiempo Real (Base 100.00%)
                             </span>
                             <span className="text-[10px] font-mono text-emerald-700 font-semibold">
                                 ● Sync: {escrutinioVivo.ultimoPulso}
@@ -512,18 +811,21 @@ export default function PanelSufragio({
 
                         <ProgressBar
                             label="👍 A Favor"
-                            porcentaje={escrutinioVivo.aFavor}
+                            porcentaje={Number(escrutinioVivo.aFavor).toFixed(2)}
                             color="emerald"
+                            detalleDerecha={`${Number(escrutinioVivo.aFavor).toFixed(2)}%`}
                         />
                         <ProgressBar
                             label="👎 En Contra"
-                            porcentaje={escrutinioVivo.enContra}
+                            porcentaje={Number(escrutinioVivo.enContra).toFixed(2)}
                             color="red"
+                            detalleDerecha={`${Number(escrutinioVivo.enContra).toFixed(2)}%`}
                         />
                         <ProgressBar
                             label="✋ Abstención"
-                            porcentaje={escrutinioVivo.abstencion}
+                            porcentaje={Number(escrutinioVivo.abstencion).toFixed(2)}
                             color="slate"
+                            detalleDerecha={`${Number(escrutinioVivo.abstencion).toFixed(2)}%`}
                         />
                     </Card>
                 </div>
