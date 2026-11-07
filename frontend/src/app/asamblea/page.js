@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import ResumenAsamblea from '../../components/ResumenAsamblea';
@@ -10,22 +10,17 @@ export default function LobbyAsamblea() {
 
     const asambleaCerrada = faseAsamblea === 'CERRADA';
 
-    const [votosPorTema, setVotosPorTema] = useState({
-        1: null,
-        2: null,
-        3: null,
-    });
-
-    useEffect(() => {
-        try {
-            const guardados = localStorage.getItem('consorciosync_votos_por_tema');
-            if (guardados) {
-                setVotosPorTema(JSON.parse(guardados));
+    const [votosPorTema] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const guardados = localStorage.getItem('consorciosync_votos_por_tema');
+                if (guardados) return JSON.parse(guardados);
+            } catch {
+                // Fallback por defecto
             }
-        } catch {
-            // Fallback por defecto
         }
-    }, []);
+        return { 1: null, 2: null, 3: null };
+    });
 
     // Datos de la Doble Mayoría (Art. 2060 CCyCN: Mayoría de Unidades + Mayoría de Coeficiente)
     const [metricasQuorum] = useState({
@@ -85,11 +80,17 @@ export default function LobbyAsamblea() {
                         <p className="text-slate-300 text-sm mt-0.5">
                             Consorcio Edificio Las Margaritas • Titular:{' '}
                             <strong>{usuario?.nombre || 'Propietario'}</strong> ({usuario?.unidad || 'UF 4B'} — Coef.{' '}
-                            {usuario?.coeficiente || 5.2}%)
+                            {Number(usuario?.coeficienteTotal ?? usuario?.coeficiente ?? 5.2).toFixed(2)}%)
                         </p>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={() => router.push('/asamblea/cierre')}
+                            className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-2 px-3.5 rounded-lg text-xs border border-emerald-500 transition-colors cursor-pointer shadow-sm"
+                        >
+                            🏁 Resultados y Cierre (Acta N° 014)
+                        </button>
                         <button
                             onClick={() => router.push('/asamblea/delegar')}
                             className="bg-blue-700 hover:bg-blue-600 text-white font-semibold py-2 px-3.5 rounded-lg text-xs border border-blue-500 transition-colors cursor-pointer shadow-sm"

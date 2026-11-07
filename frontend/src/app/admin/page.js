@@ -12,6 +12,7 @@ import TabConfiguracion from '../../components/admin/TabConfiguracion';
 import TabTrazabilidad from '../../components/admin/TabTrazabilidad';
 import TabGestionActas from '../../components/admin/TabGestionActas';
 import TabUnidades from '../../components/admin/TabUnidades';
+import ResumenAsamblea from '../../components/ResumenAsamblea';
 
 export default function AdminDashboard() {
     const router = useRouter();
@@ -76,7 +77,14 @@ export default function AdminDashboard() {
                             Auditoría de Padrón Maestro Catastral, KYC, Cartas Poder y Gobernanza de Asambleas
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <Button
+                            variant="success"
+                            size="sm"
+                            onClick={() => router.push('/asamblea/cierre')}
+                        >
+                            🏁 Resultados y Cierre (Acta N° 014)
+                        </Button>
                         <Button
                             variant="primary"
                             size="sm"
@@ -102,8 +110,9 @@ export default function AdminDashboard() {
                     <button onClick={() => setTabActiva('asamblea')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'asamblea' ? 'bg-blue-700 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>📅 7. Ventana Asamblea</button>
                     <button onClick={() => setTabActiva('temas')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'temas' ? 'bg-blue-700 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>📋 8. Orden del Día</button>
                     <button onClick={() => setTabActiva('actas')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'actas' ? 'bg-blue-700 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>🖋️ 9. Gestión Actas</button>
-                    <button onClick={() => setTabActiva('configuracion')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'configuracion' ? 'bg-blue-700 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>⚙️ 10. Configuración</button>
-                    <button onClick={() => setTabActiva('trazabilidad')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'trazabilidad' ? 'bg-blue-700 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>📡 11. Trazabilidad</button>
+                    <button onClick={() => setTabActiva('cierre')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'cierre' ? 'bg-emerald-700 text-white shadow' : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-300'}`}>🏁 10. Resultados y Cierre</button>
+                    <button onClick={() => setTabActiva('configuracion')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'configuracion' ? 'bg-blue-700 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>⚙️ 11. Configuración</button>
+                    <button onClick={() => setTabActiva('trazabilidad')} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm transition-colors cursor-pointer ${tabActiva === 'trazabilidad' ? 'bg-blue-700 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>📡 12. Trazabilidad</button>
                 </div>
 
                 {/* CONTENIDO DE LAS PESTAÑAS */}
@@ -116,6 +125,7 @@ export default function AdminDashboard() {
                     {tabActiva === 'votoAsistido' && <TabVotoAsistido />}
                     {tabActiva === 'unidades' && <TabUnidades />}
                     {tabActiva === 'actas' && <TabGestionActas />}
+                    {tabActiva === 'cierre' && <ResumenAsamblea />}
                     {tabActiva === 'configuracion' && <TabConfiguracion />}
                     {tabActiva === 'trazabilidad' && <TabTrazabilidad />}
 

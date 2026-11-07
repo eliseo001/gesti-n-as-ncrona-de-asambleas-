@@ -157,6 +157,16 @@ export default function Navbar() {
                                     >
                                         🔍 Monitor de Urna
                                     </button>
+                                    <button
+                                        onClick={() => router.push('/asamblea/cierre')}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
+                                            pathname.startsWith('/asamblea/cierre')
+                                                ? 'bg-emerald-700 text-white border-emerald-500 shadow-sm'
+                                                : 'bg-slate-800 text-emerald-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                    >
+                                        🏁 Resultados y Cierre
+                                    </button>
                                 </>
                             ) : (
                                 <>
@@ -169,6 +179,16 @@ export default function Navbar() {
                                         }`}
                                     >
                                         🏛️ Lobby / Orden del Día
+                                    </button>
+                                    <button
+                                        onClick={() => router.push('/asamblea/cierre')}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
+                                            pathname.startsWith('/asamblea/cierre')
+                                                ? 'bg-emerald-700 text-white border-emerald-500 shadow-sm'
+                                                : 'bg-slate-800 text-emerald-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                    >
+                                        🏁 Resultados y Cierre
                                     </button>
                                     <button
                                         onClick={() => router.push('/asamblea/propuestas')}

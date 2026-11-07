@@ -88,15 +88,17 @@ export default function TabContingencias() {
                     <p className="text-xs text-slate-500 mb-4 flex-grow">
                         Concluye la ventana temporal, pasa el foro y la urna a modo de solo lectura y consolida el Acta Digital.
                     </p>
-                    <button
-                        onClick={() => {
-                            actualizarFaseAsamblea('CERRADA');
-                            alert('Asamblea CERRADA oficialmente. Modo solo lectura activado y Acta Digital disponible.');
-                        }}
-                        className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2.5 rounded-lg text-xs cursor-pointer"
-                    >
-                        Cerrar Asamblea y Emitir Acta
-                    </button>
+                    <div className="space-y-2">
+                        <button
+                            onClick={() => {
+                                actualizarFaseAsamblea('CERRADA');
+                                router.push('/asamblea/cierre');
+                            }}
+                            className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2.5 rounded-lg text-xs cursor-pointer"
+                        >
+                            Cerrar Asamblea y Ver Resultados →
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
